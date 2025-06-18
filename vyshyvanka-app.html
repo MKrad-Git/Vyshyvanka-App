@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vyshyvanka Pattern Creator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        #canvas-container {
+            position: relative;
+            cursor: crosshair;
+        }
+        #mainCanvas {
+            background-image:
+                linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+        }
+        #previewCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none; /* Allows clicks to pass through to the main canvas */
+        }
+        .palette-canvas {
+             cursor: pointer;
+             border: 2px solid transparent;
+             transition: all 0.2s ease-in-out;
+             display: flex;
+             justify-content: center;
+             align-items: center;
+        }
+        .palette-canvas.selected {
+            border-color: #4f46e5; /* Indigo-600 */
+            transform: scale(1.05);
+            box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.1);
+        }
+        .tool-btn, .filter-btn, .transform-btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .tool-btn.active, .filter-btn.active {
+            background-color: #4f46e5;
+            color: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        #undoButton:disabled, #redoButton:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .symmetry-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            user-select: none;
+        }
+        .symmetry-checkbox {
+            appearance: none;
+            width: 1.5rem;
+            height: 1.5rem;
+            border: 2px solid #cbd5e1;
+            border-radius: 0.375rem;
+            margin-right: 0.5rem;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .symmetry-checkbox:checked {
+            background-color: #4f46e5;
+            border-color: #4f46e5;
+        }
+        .symmetry-checkbox:checked::after {
+            content: '✓';
+            color: white;
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 lg:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900">Vyshyvanka Pattern Creator</h1>
+            <p class="text-lg text-gray-600 mt-2">Hover to preview, click to draw.</p>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+
+            <!-- Main Drawing Area -->
+            <main class="flex-grow flex flex-col items-center">
+                <div id="canvas-container" class="w-full max-w-2xl aspect-square bg-white rounded-xl shadow-lg border border-gray-200">
+                    <canvas id="mainCanvas" class="rounded-xl"></canvas>
+                    <canvas id="previewCanvas" class="rounded-xl"></canvas>
+                </div>
+                <div class="mt-6 flex gap-4">
+                     <button id="undoButton" class="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition-transform transform hover:scale-105" disabled>
+                        Undo
+                    </button>
+                    <button id="redoButton" class="px-6 py-3 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition-transform transform hover:scale-105" disabled>
+                        Redo
+                    </button>
+                    <button id="clearButton" class="px-6 py-3 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75 transition-transform transform hover:scale-105">
+                        Clear Canvas
+                    </button>
+                    <div class="flex items-center">
+                        <label for="colorPicker" class="mr-2 font-medium text-gray-700">Color:</label>
+                        <input type="color" id="colorPicker" value="#B91C1C" class="w-10 h-10 rounded-full border-2 border-gray-300 cursor-pointer">
+                    </div>
+                </div>
+            </main>
+
+            <!-- Tools & Palette Sidebar -->
+            <aside class="lg:w-80 flex-shrink-0">
+                <div class="bg-white p-4 rounded-xl shadow-lg border border-gray-200 h-full">
+                    <h2 class="text-xl font-bold mb-4 text-center">Tools</h2>
+
+                    <!-- Tool Selector -->
+                    <div class="flex justify-center gap-2 mb-4 border-b pb-4">
+                        <button id="patternToolBtn" class="tool-btn px-4 py-2 text-sm font-medium rounded-full">Patterns</button>
+                        <button id="brushToolBtn" class="tool-btn px-4 py-2 text-sm font-medium rounded-full">Brush</button>
+                    </div>
+
+                    <!-- Symmetry Controls -->
+                    <div id="symmetryControls" class="mb-4">
+                        <h3 class="text-lg font-bold mb-3 text-center">Symmetry</h3>
+                        <div class="grid grid-cols-2 gap-2 text-sm">
+                            <label class="symmetry-label"><input type="checkbox" id="symHorizontal" class="symmetry-checkbox" checked> Horizontal</label>
+                            <label class="symmetry-label"><input type="checkbox" id="symVertical" class="symmetry-checkbox" checked> Vertical</label>
+                            <label class="symmetry-label"><input type="checkbox" id="symDiagonalMain" class="symmetry-checkbox" checked> Diagonal (\)</label>
+                            <label class="symmetry-label"><input type="checkbox" id="symDiagonalAnti" class="symmetry-checkbox" checked> Diagonal (/)</label>
+                        </div>
+                    </div>
+
+                    <!-- Brush Options -->
+                    <div id="brushOptions" class="hidden mb-4">
+                        <label for="brushSize" class="block text-center text-sm font-medium text-gray-700 mb-2">Brush Size: <span id="brushSizeValue">1</span></label>
+                        <input id="brushSize" type="range" min="1" max="11" step="2" value="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <!-- Pattern Palette -->
+                    <div id="paletteContainer">
+                        <h3 class="text-lg font-bold mb-4 text-center">Pattern Palette</h3>
+                        <div id="filter-container" class="flex flex-wrap justify-center gap-2 mb-4"></div>
+                        <div id="patternPalette" class="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-4 gap-3 overflow-y-auto" style="max-height: 40vh;"></div>
+                        <!-- Transform Controls -->
+                        <div id="transformControls" class="mt-4 pt-4 border-t">
+                            <h3 class="text-md font-bold mb-3 text-center">Transform Selected</h3>
+                            <div class="flex justify-center gap-2">
+                                <button id="rotateBtn" class="transform-btn px-3 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg text-sm">Rotate 90°</button>
+                                <button id="flipHBtn" class="transform-btn px-3 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg text-sm">Flip H</button>
+                                <button id="flipVBtn" class="transform-btn px-3 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg text-sm">Flip V</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const patterns = {
+                'А': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [0,1,1,1,0],
+                        [1,0,0,0,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'Б': {
+                    matrix: [
+                        [0,1,1,0,0,0,1,1,0],
+                        [1,0,0,1,0,1,0,0,1],
+                        [0,1,0,0,1,0,0,1,0],
+                        [0,0,0,0,1,0,0,0,0],
+                        [0,0,0,0,0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'В': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [1,0,1,0,1],
+                        [1,0,1,0,1],
+                        [0,0,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Г': {
+                    matrix: [
+                        [0,1,0],
+                        [1,1,1],
+                        [1,1,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ґ': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [1,1,1,0,0],
+                        [1,1,1,0,0],
+                        [0,1,0,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Д': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [0,1,0,1,0],
+                        [1,0,1,0,1],
+                        [0,1,1,1,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Е': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [1,0,1,0,1],
+                        [1,1,1,1,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'Є': {
+                    matrix: [
+                        [1,0,1,0,1],
+                        [1,0,1,0,1],
+                        [0,1,1,1,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ж': {
+                    matrix: [
+                        [1,0,1,0,1],
+                        [0,1,1,1,0],
+                        [1,0,1,0,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'З': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [0,1,0,1,0],
+                        [1,0,1,0,1],
+                        [0,1,0,1,0],
+                        [0,0,1,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'И': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [1,0,1,0,1],
+                        [1,1,1,1,1],
+                        [0,1,1,1,0],
+                        [0,0,1,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'І': {
+                    matrix: [
+                        [0,1,0],
+                        [0,0,0],
+                        [0,1,0],
+                        [0,1,0],
+                        [0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ї': {
+                    matrix: [
+                        [1,0,1],
+                        [0,0,0],
+                        [0,1,0],
+                        [0,1,0],
+                        [0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Й': {
+                    matrix: [
+                        [0,1,1,1,0],
+                        [1,0,1,0,1],
+                        [1,1,1,1,1],
+                        [0,1,1,1,0],
+                        [0,0,1,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'К': {
+                    matrix: [
+                        [1,0,1],
+                        [0,1,0],
+                        [1,1,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'Л': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [0,1,0,1,0],
+                        [1,0,0,0,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'М': {
+                    matrix: [
+                        [1,0,0,0,1],
+                        [1,1,0,1,1],
+                        [1,0,1,0,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'Н': {
+                    matrix: [
+                        [1,0,1],
+                        [1,1,1],
+                        [1,0,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'О': {
+                    matrix: [
+                        [0,1,1,1,0],
+                        [1,0,0,0,1],
+                        [1,0,0,0,1],
+                        [0,1,1,1,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'П': {
+                    matrix: [
+                        [1,1,1],
+                        [1,0,1],
+                        [1,0,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'Р': {
+                    matrix: [
+                        [0,1,1,0,0],
+                        [1,0,0,1,0],
+                        [1,0,1,0,0],
+                        [1,0,0,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'С': {
+                    matrix: [
+                        [0,1,0],
+                        [1,0,0],
+                        [0,1,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Т': {
+                    matrix: [
+                        [1,1,1],
+                        [0,1,0],
+                        [0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'У': {
+                    matrix: [
+                        [1,0,0,0,1],
+                        [0,1,0,1,0],
+                        [0,0,1,0,0],
+                        [0,0,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ф': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [0,1,1,1,0],
+                        [1,0,1,0,1],
+                        [0,1,1,1,0],
+                        [0,0,1,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Х': {
+                    matrix: [
+                        [0,1,0],
+                        [1,1,1],
+                        [0,1,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ц': {
+                    matrix: [
+                        [1,0,1],
+                        [1,1,1],
+                        [0,1,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ч': {
+                    matrix: [
+                        [1,1,0,1,1],
+                        [0,1,1,1,0],
+                        [0,0,1,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ш': {
+                    matrix: [
+                        [0,1,0,0,0,1,0],
+                        [0,1,0,1,0,1,0],
+                        [1,1,1,1,1,1,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'Щ': {
+                    matrix: [
+                        [1,0,0,0,1,0,0],
+                        [1,0,1,0,1,0,0],
+                        [1,1,1,1,1,1,0],
+                        [0,0,1,0,0,0,0],
+                        [0,0,0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ю': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [1,0,1,0,0],
+                        [0,1,0,0,0],
+                        [1,1,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Я': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [0,1,1,1,0],
+                        [1,0,1,0,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ь': {
+                    matrix: [
+                        [1,1,1,0,0],
+                        [1,0,1,0,0],
+                        [0,1,0,0,0],
+                        [1,0,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Regular']
+                },
+                'Ъ': {
+                    matrix: [
+                        [0,1,1,0,0],
+                        [0,0,1,0,0],
+                        [1,1,1,1,1],
+                        [1,0,1,0,1],
+                        [0,0,1,1,1]
+                    ],
+                    tags: ['Regular']
+                },
+                'А Diagonal': {
+                    matrix: [
+                        [1,1,1],
+                        [0,1,1],
+                        [0,0,1]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Б Diagonal': {
+                    matrix: [
+                        [1,1,1,0,0],
+                        [1,0,1,0,0],
+                        [0,0,1,1,1],
+                        [0,1,0,0,1],
+                        [1,0,0,1,1]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'В Diagonal': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [1,0,0,1,0],
+                        [0,0,1,0,0],
+                        [0,1,0,0,1],
+                        [0,0,0,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Г Diagonal': {
+                    matrix: [
+                        [0,1,0,1,0],
+                        [1,1,1,0,0],
+                        [0,1,1,1,0],
+                        [0,0,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Ґ Diagonal': {
+                    matrix: [
+                        [0,1,0,1,0],
+                        [1,1,1,0,0],
+                        [0,1,1,1,0],
+                        [1,0,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Д Diagonal': {
+                    matrix: [
+                        [0,0,0,1,0],
+                        [1,0,1,0,1],
+                        [1,0,1,1,0],
+                        [0,1,0,0,0],
+                        [0,0,1,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Е Diagonal': {
+                    matrix: [
+                        [0,1,0,1,0],
+                        [1,0,1,0,0],
+                        [0,1,0,1,0],
+                        [0,0,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Є Diagonal': {
+                    matrix: [
+                        [1,0,0,0,0],
+                        [1,0,1,0,0],
+                        [0,1,0,0,0],
+                        [0,0,1,1,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Ж Diagonal': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [1,1,0,1,0],
+                        [0,0,1,0,0],
+                        [0,1,0,1,1],
+                        [0,0,0,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'З Diagonal': {
+                    matrix: [
+                        [1,0,1,0,1],
+                        [0,1,0,1,0],
+                        [1,0,1,0,1],
+                        [0,1,0,1,0],
+                        [1,0,1,0,1]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'И Diagonal': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [1,0,0,0,0],
+                        [1,0,1,0,0],
+                        [0,1,0,0,1],
+                        [1,0,1,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'І Diagonal': {
+                    matrix: [
+                        [0,0,0,1,0],
+                        [0,0,0,0,0],
+                        [0,1,0,0,0],
+                        [1,0,0,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Ї Diagonal': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [0,0,0,0,0],
+                        [0,1,0,1,0],
+                        [1,0,0,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Й Diagonal': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [1,0,1,1,0],
+                        [1,0,1,1,0],
+                        [0,1,0,0,1],
+                        [1,0,1,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'К Diagonal': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [1,0,1,1,0],
+                        [0,1,0,0,0],
+                        [0,0,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Л Diagonal': {
+                    matrix: [
+                        [1,1,1],
+                        [0,0,1],
+                        [0,0,1]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'М Diagonal': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [0,1,1,0,0],
+                        [1,0,1,1,1],
+                        [0,0,0,1,0],
+                        [0,0,1,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Н Diagonal': {
+                    matrix: [
+                        [0,1,1,0,0],
+                        [1,1,0,0,0],
+                        [1,0,1,0,1],
+                        [0,0,0,1,1],
+                        [0,0,1,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'О Diagonal': {
+                    matrix: [
+                        [0,1,0],
+                        [1,0,1],
+                        [0,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'П Diagonal': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [1,0,1,0,0],
+                        [0,0,0,1,0],
+                        [0,0,1,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Р Diagonal': {
+                    matrix: [
+                        [0,0,1,0,0],
+                        [0,1,0,1,0],
+                        [1,0,1,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'С Diagonal': {
+                    matrix: [
+                        [1,1,0,0,0],
+                        [1,0,0,0,0],
+                        [0,1,0,1,0],
+                        [0,0,1,1,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Т Diagonal': {
+                    matrix: [
+                        [1,0,0],
+                        [0,1,0],
+                        [1,0,1]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'У Diagonal': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [0,1,0,0,0],
+                        [0,1,1,1,0],
+                        [1,0,0,0,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Ф Diagonal': {
+                    matrix: [
+                        [1,1,0,1,0],
+                        [1,0,1,0,0],
+                        [0,1,0,1,0],
+                        [0,0,1,1,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Х Diagonal': {
+                    matrix: [
+                        [1,0,1],
+                        [0,1,0],
+                        [1,0,1]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Ц Diagonal': {
+                    matrix: [
+                        [1,1,0,0,0],
+                        [1,0,0,0,0],
+                        [0,1,0,1,0],
+                        [1,0,1,1,0],
+                        [0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Ч Diagonal': {
+                    matrix: [
+                        [0,1,0,0,0],
+                        [1,1,0,0,0],
+                        [1,0,0,0,0],
+                        [0,1,0,1,1],
+                        [1,0,1,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Ш Diagonal': {
+                    matrix: [
+                        [0,0,1,1,0,0,0],
+                        [1,1,1,0,0,0,0],
+                        [0,1,0,1,0,1,0],
+                        [0,0,1,0,1,1,0],
+                        [0,0,0,1,1,0,0],
+                        [0,0,0,0,1,0,0],
+                        [0,0,0,0,0,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Щ Diagonal': {
+                    matrix: [
+                        [0,1,1,0,0],
+                        [1,1,0,0,0],
+                        [1,0,1,0,1],
+                        [0,1,0,1,1],
+                        [1,0,1,1,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Ю Diagonal': {
+                    matrix: [
+                        [0,0,1,1,1],
+                        [0,0,1,0,1],
+                        [1,0,1,1,1],
+                        [0,1,0,0,0],
+                        [0,0,1,0,0]
+                    ],
+                    tags: ['Diagonal']
+                },
+                'Я Diagonal': {
+                    matrix: [
+                        [1,1,1],
+                        [0,1,1],
+                        [1,0,1]
+                    ],
+                    tags: ['Diagonal']
+                }
+            };
+
+            const mainCanvas = document.getElementById('mainCanvas');
+            const previewCanvas = document.getElementById('previewCanvas');
+            const canvasContainer = document.getElementById('canvas-container');
+            const ctx = mainCanvas.getContext('2d');
+            const previewCtx = previewCanvas.getContext('2d');
+            const clearButton = document.getElementById('clearButton');
+            const undoButton = document.getElementById('undoButton');
+            const redoButton = document.getElementById('redoButton');
+            const colorPicker = document.getElementById('colorPicker');
+
+            const patternToolBtn = document.getElementById('patternToolBtn');
+            const brushToolBtn = document.getElementById('brushToolBtn');
+            const brushOptions = document.getElementById('brushOptions');
+            const brushSizeInput = document.getElementById('brushSize');
+            const brushSizeValue = document.getElementById('brushSizeValue');
+
+            const paletteContainer = document.getElementById('paletteContainer');
+            const palette = document.getElementById('patternPalette');
+            const filterContainer = document.getElementById('filter-container');
+            const transformControls = document.getElementById('transformControls');
+            const rotateBtn = document.getElementById('rotateBtn');
+            const flipHBtn = document.getElementById('flipHBtn');
+            const flipVBtn = document.getElementById('flipVBtn');
+
+            const symmetryCheckboxes = {
+                horizontal: document.getElementById('symHorizontal'),
+                vertical: document.getElementById('symVertical'),
+                diagonalMain: document.getElementById('symDiagonalMain'),
+                diagonalAnti: document.getElementById('symDiagonalAnti')
+            };
+
+            const gridSize = 71;
+            let cellSize;
+            let originalSelectedPattern = patterns['А'].matrix;
+            let selectedPattern = patterns['А'].matrix;
+            let selectedColor = colorPicker.value;
+            
+            let history = [[]]; // Start with an empty canvas state
+            let historyIndex = 0;
+            
+            let currentTool = 'pattern';
+            let brushSize = 1;
+            let isDrawing = false;
+            let currentStroke = [];
+            let lastHoverPos = { gridX: -1, gridY: -1 };
+
+            // --- STATE & HISTORY ---
+            function updateHistory(newCells) {
+                if (historyIndex < history.length - 1) {
+                    history = history.slice(0, historyIndex + 1);
+                }
+                history.push(newCells);
+                historyIndex++;
+                updateUndoRedoButtons();
+            }
+
+            function undo() {
+                if (historyIndex > 0) {
+                    historyIndex--;
+                    drawAllPermanentCells();
+                }
+            }
+            
+            function redo() {
+                if (historyIndex < history.length - 1) {
+                    historyIndex++;
+                    drawAllPermanentCells();
+                }
+            }
+            
+            function updateUndoRedoButtons() {
+                undoButton.disabled = historyIndex <= 0;
+                redoButton.disabled = historyIndex >= history.length - 1;
+            }
+
+            // --- TOOLS & TRANSFORMS ---
+            function setTool(toolName) {
+                currentTool = toolName;
+                const isPatternTool = toolName === 'pattern';
+                
+                patternToolBtn.classList.toggle('active', isPatternTool);
+                brushToolBtn.classList.toggle('active', !isPatternTool);
+                
+                brushOptions.classList.toggle('hidden', isPatternTool);
+                paletteContainer.classList.toggle('hidden', !isPatternTool);
+            }
+
+            function updateSelectedPattern(newPattern) {
+                selectedPattern = newPattern;
+                // Force a preview redraw
+                drawPatternPreview(previewCtx, selectedPattern, lastHoverPos.gridX, lastHoverPos.gridY, hexToRgba(selectedColor, 0.5));
+            }
+
+            rotateBtn.addEventListener('click', () => updateSelectedPattern(transposeMatrix(flipVertical(selectedPattern))));
+            flipHBtn.addEventListener('click', () => updateSelectedPattern(flipHorizontal(selectedPattern)));
+            flipVBtn.addEventListener('click', () => updateSelectedPattern(flipVertical(selectedPattern)));
+
+
+            // --- HELPER & SETUP ---
+            function hexToRgba(hex, alpha = 1) {
+                const r = parseInt(hex.slice(1, 3), 16);
+                const g = parseInt(hex.slice(3, 5), 16);
+                const b = parseInt(hex.slice(5, 7), 16);
+                return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            }
+
+            function transposeMatrix(matrix) {
+                if (!matrix || matrix.length === 0 || !matrix[0]) return [];
+                return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
+            }
+
+            function flipHorizontal(matrix) {
+                if (!matrix || matrix.length === 0) return [];
+                return matrix.map(row => row.slice().reverse());
+            }
+
+            function flipVertical(matrix) {
+                if (!matrix || matrix.length === 0) return [];
+                return matrix.slice().reverse();
+            }
+
+            // --- PALETTE LOGIC ---
+            function populateFilters() {
+                const allTags = new Set(['All']);
+                Object.values(patterns).forEach(p => p.tags.forEach(tag => allTags.add(tag)));
+                filterContainer.innerHTML = '';
+                allTags.forEach(tag => {
+                    const button = document.createElement('button');
+                    button.className = 'filter-btn px-3 py-1 bg-gray-200 text-gray-700 font-medium rounded-full text-sm';
+                    button.textContent = tag.charAt(0).toUpperCase() + tag.slice(1);
+                    button.dataset.tag = tag;
+                    if (tag === 'All') button.classList.add('active');
+                    button.addEventListener('click', () => {
+                        document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+                        button.classList.add('active');
+                        populatePalette(tag);
+                    });
+                    filterContainer.appendChild(button);
+                });
+            }
+
+            function populatePalette(filter = 'All') {
+                palette.innerHTML = '';
+                let firstPatternKey = Object.keys(patterns).find(key => filter === 'All' || patterns[key].tags.includes(filter));
+
+                Object.entries(patterns).forEach(([name, patternObj]) => {
+                    if (filter === 'All' || patternObj.tags.includes(filter)) {
+                        const patternData = patternObj.matrix;
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'flex flex-col items-center';
+                        const canvas = document.createElement('canvas');
+                        canvas.className = `palette-canvas bg-gray-200 rounded-lg w-full aspect-square`;
+                        if (name === firstPatternKey) {
+                             canvas.classList.add('selected');
+                             originalSelectedPattern = patternData;
+                             selectedPattern = patternData;
+                        }
+                        canvas.width = 50; canvas.height = 50;
+                        drawMiniPattern(canvas, patternData);
+                        canvas.addEventListener('click', () => {
+                            originalSelectedPattern = patternData;
+                            selectedPattern = patternData;
+                            document.querySelectorAll('.palette-canvas').forEach(p => p.classList.remove('selected'));
+                            canvas.classList.add('selected');
+                        });
+                        const label = document.createElement('p');
+                        label.className = 'text-xs mt-1 text-center text-gray-600';
+                        label.textContent = name;
+                        wrapper.appendChild(canvas);
+                        wrapper.appendChild(label);
+                        palette.appendChild(wrapper);
+                    }
+                });
+                if (!firstPatternKey) {
+                    palette.innerHTML = `<p class="col-span-full text-center text-gray-500">No patterns with this tag.</p>`;
+                }
+            }
+            
+            function drawMiniPattern(canvas, pattern) {
+                const pCtx = canvas.getContext('2d'); pCtx.clearRect(0, 0, canvas.width, canvas.height);
+                const pHeight = pattern.length; const pWidth = pattern[0].length;
+                const maxDim = Math.max(pWidth, pHeight); const pCellSize = (canvas.width * 0.8) / maxDim;
+                const totalWidth = pWidth * pCellSize; const totalHeight = pHeight * pCellSize;
+                const startX = (canvas.width - totalWidth) / 2; const startY = (canvas.height - totalHeight) / 2;
+                pCtx.fillStyle = '#374151';
+                for (let y = 0; y < pHeight; y++) for (let x = 0; x < pWidth; x++) if (pattern[y] && pattern[y][x]) pCtx.fillRect(startX + (x * pCellSize), startY + (y * pCellSize), pCellSize, pCellSize);
+            }
+
+            // --- CANVAS DRAWING ---
+            function setupCanvas() {
+                const containerSize = canvasContainer.clientWidth;
+                mainCanvas.width = previewCanvas.width = containerSize;
+                mainCanvas.height = previewCanvas.height = containerSize;
+                cellSize = mainCanvas.width / gridSize;
+                mainCanvas.style.backgroundSize = `${cellSize}px ${cellSize}px`;
+                drawAllPermanentCells();
+            }
+            
+            function drawCell(drawCtx, gridX, gridY, color) {
+                drawCtx.fillStyle = color;
+                drawCtx.fillRect(gridX * cellSize, gridY * cellSize, cellSize, cellSize);
+            }
+
+            function drawAllPermanentCells() {
+                const drawnCells = history[historyIndex];
+                ctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+                drawnCells.forEach(cell => {
+                    drawCell(ctx, cell.x, cell.y, cell.color);
+                });
+                updateUndoRedoButtons();
+            }
+            
+            function getSymmetricPoints(gridX, gridY) {
+                const centerX = Math.floor(gridSize / 2);
+                const centerY = Math.floor(gridSize / 2);
+                const relativeX = gridX - centerX;
+                const relativeY = gridY - centerY;
+
+                const sym = {
+                    h: symmetryCheckboxes.horizontal.checked,
+                    v: symmetryCheckboxes.vertical.checked,
+                    d1: symmetryCheckboxes.diagonalMain.checked,
+                    d2: symmetryCheckboxes.diagonalAnti.checked
+                };
+                
+                let points = new Map();
+                const addPoint = (x, y) => points.set(`${x},${y}`, { x, y });
+                
+                addPoint(relativeX, relativeY);
+
+                if (sym.h) Array.from(points.values()).forEach(pt => addPoint(-pt.x, pt.y));
+                if (sym.v) Array.from(points.values()).forEach(pt => addPoint(pt.x, -pt.y));
+                if (sym.d1) Array.from(points.values()).forEach(pt => addPoint(pt.y, pt.x));
+                if (sym.d2) Array.from(points.values()).forEach(pt => addPoint(-pt.y, -pt.x));
+                
+                return Array.from(points.values()).map(pt => ({
+                    x: centerX + pt.x,
+                    y: centerY + pt.y
+                }));
+            }
+
+            function addSymmetricCells(gridX, gridY, size, color, stroke) {
+                const halfSize = Math.floor(size / 2);
+                for(let i = 0; i < size; i++) {
+                    for(let j = 0; j < size; j++) {
+                        const points = getSymmetricPoints(gridX - halfSize + i, gridY - halfSize + j);
+                        points.forEach(p => {
+                           if (p.x >= 0 && p.x < gridSize && p.y >= 0 && p.y < gridSize && !stroke.some(c => c.x === p.x && c.y === p.y)) {
+                                stroke.push({ x: p.x, y: p.y, color: color });
+                            }
+                        });
+                    }
+                }
+            }
+            
+            function drawSymmetricPreview(drawCtx, gridX, gridY, size, color) {
+                drawCtx.clearRect(0, 0, drawCtx.canvas.width, drawCtx.canvas.height);
+                const halfSize = Math.floor(size / 2);
+                for(let i = 0; i < size; i++) {
+                    for(let j = 0; j < size; j++) {
+                        const points = getSymmetricPoints(gridX - halfSize + i, gridY - halfSize + j);
+                        points.forEach(p => drawCell(drawCtx, p.x, p.y, color));
+                    }
+                }
+            }
+
+            function getPatternSymmetricPositions(pattern, gridX, gridY) {
+                const centerX = Math.floor(gridSize / 2), centerY = Math.floor(gridSize / 2);
+                const relativeX = gridX - centerX, relativeY = gridY - centerY;
+
+                const sym = {
+                    h: symmetryCheckboxes.horizontal.checked,
+                    v: symmetryCheckboxes.vertical.checked,
+                    d1: symmetryCheckboxes.diagonalMain.checked,
+                    d2: symmetryCheckboxes.diagonalAnti.checked
+                };
+                
+                let points = new Map();
+                const addPoint = (p, x, y) => points.set(`${x},${y}`, {p, x, y});
+
+                addPoint(pattern, relativeX, relativeY);
+
+                if (sym.h) Array.from(points.values()).forEach(pt => addPoint(flipHorizontal(pt.p), -pt.x, pt.y));
+                if (sym.v) Array.from(points.values()).forEach(pt => addPoint(flipVertical(pt.p), pt.x, -pt.y));
+                if (sym.d1) Array.from(points.values()).forEach(pt => addPoint(transposeMatrix(pt.p), pt.y, pt.x));
+                if (sym.d2) Array.from(points.values()).forEach(pt => addPoint(flipHorizontal(flipVertical(transposeMatrix(pt.p))), -pt.y, -pt.x));
+
+                return Array.from(points.values()).map(pt => ({
+                    p: pt.p,
+                    x: centerX + pt.x,
+                    y: centerY + pt.y
+                }));
+            }
+
+            function drawPatternPreview(drawCtx, pattern, gridX, gridY, color) {
+                if (!pattern || !pattern[0]) return;
+                drawCtx.clearRect(0, 0, drawCtx.canvas.width, drawCtx.canvas.height);
+                const positions = getPatternSymmetricPositions(pattern, gridX, gridY);
+                
+                positions.forEach(pos => {
+                    if (!pos.p || !pos.p[0]) return;
+                    const patternHeight = pos.p.length, patternWidth = pos.p[0].length, offsetX = Math.floor(patternWidth / 2), offsetY = Math.floor(patternHeight / 2);
+                    for (let py = 0; py < patternHeight; py++) for (let px = 0; px < patternWidth; px++) if (pos.p[py] && pos.p[py][px] === 1) drawCell(drawCtx, pos.x - offsetX + px, pos.y - offsetY + py, color);
+                });
+            }
+
+            function placePattern(gridX, gridY) {
+                 const newCellsForHistory = [...history[historyIndex]];
+                 const positions = getPatternSymmetricPositions(selectedPattern, gridX, gridY);
+
+                 positions.forEach(pos => {
+                    if (!pos.p || !pos.p[0]) return;
+                    const patternHeight = pos.p.length, patternWidth = pos.p[0].length, offsetX = Math.floor(patternWidth / 2), offsetY = Math.floor(patternHeight / 2);
+                    for (let py = 0; py < patternHeight; py++) for (let px = 0; px < patternWidth; px++) if (pos.p[py] && pos.p[py][px] === 1) {
+                        const finalX = pos.x - offsetX + px, finalY = pos.y - offsetY + py;
+                        if (finalX >= 0 && finalX < gridSize && finalY >= 0 && finalY < gridSize && !newCellsForHistory.some(c => c.x === finalX && c.y === finalY)) newCellsForHistory.push({ x: finalX, y: finalY, color: selectedColor });
+                    }
+                 });
+                 updateHistory(newCellsForHistory);
+                 drawAllPermanentCells();
+            }
+
+            // --- EVENT LISTENERS ---
+            function getGridPos(e) {
+                const rect = mainCanvas.getBoundingClientRect();
+                return {
+                    gridX: Math.floor((e.clientX - rect.left) / cellSize),
+                    gridY: Math.floor((e.clientY - rect.top) / cellSize)
+                };
+            }
+            
+            Object.values(symmetryCheckboxes).forEach(cb => {
+                cb.addEventListener('change', () => {
+                     if (currentTool === 'pattern') {
+                        drawPatternPreview(previewCtx, selectedPattern, lastHoverPos.gridX, lastHoverPos.gridY, hexToRgba(selectedColor, 0.5));
+                     } else {
+                        drawSymmetricPreview(previewCtx, lastHoverPos.gridX, lastHoverPos.gridY, brushSize, hexToRgba(selectedColor, 0.5));
+                     }
+                });
+            });
+
+            canvasContainer.addEventListener('mousedown', (e) => {
+                isDrawing = true;
+                const { gridX, gridY } = getGridPos(e);
+                
+                if (currentTool === 'brush') {
+                    currentStroke = []; // Start a new stroke
+                    addSymmetricCells(gridX, gridY, brushSize, selectedColor, currentStroke);
+                    // Draw preview of the first dab
+                    const tempCombined = [...history[historyIndex], ...currentStroke];
+                    ctx.clearRect(0,0,mainCanvas.width, mainCanvas.height);
+                    tempCombined.forEach(c => drawCell(ctx, c.x, c.y, c.color));
+
+                } else {
+                    placePattern(gridX, gridY);
+                }
+            });
+            
+            canvasContainer.addEventListener('mousemove', (e) => {
+                const { gridX, gridY } = getGridPos(e);
+                lastHoverPos = { gridX, gridY };
+                const previewColor = hexToRgba(selectedColor, 0.5);
+                if (currentTool === 'brush') {
+                    drawSymmetricPreview(previewCtx, gridX, gridY, brushSize, previewColor);
+                    if(isDrawing) {
+                        addSymmetricCells(gridX, gridY, brushSize, selectedColor, currentStroke);
+                        const tempCombined = [...history[historyIndex], ...currentStroke];
+                        ctx.clearRect(0,0,mainCanvas.width, mainCanvas.height);
+                        tempCombined.forEach(c => drawCell(ctx, c.x, c.y, c.color));
+                    }
+                } else {
+                    drawPatternPreview(previewCtx, selectedPattern, gridX, gridY, previewColor);
+                }
+            });
+
+            canvasContainer.addEventListener('mouseup', () => {
+                if (isDrawing && currentTool === 'brush' && currentStroke.length > 0) {
+                     const finalState = [...history[historyIndex], ...currentStroke];
+                     updateHistory(finalState);
+                     drawAllPermanentCells();
+                }
+                isDrawing = false;
+                currentStroke = [];
+            });
+            canvasContainer.addEventListener('mouseleave', () => {
+                if (isDrawing && currentTool === 'brush' && currentStroke.length > 0) {
+                     const finalState = [...history[historyIndex], ...currentStroke];
+                     updateHistory(finalState);
+                     drawAllPermanentCells();
+                }
+                isDrawing = false;
+                currentStroke = [];
+                previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+            });
+            
+            clearButton.addEventListener('click', () => {
+                updateHistory([]);
+                drawAllPermanentCells();
+            });
+
+            undoButton.addEventListener('click', undo);
+            redoButton.addEventListener('click', redo);
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key.toLowerCase() === 'z') {
+                    e.preventDefault();
+                    if(e.shiftKey) {
+                        redo();
+                    } else {
+                        undo();
+                    }
+                }
+            });
+
+            colorPicker.addEventListener('input', (e) => selectedColor = e.target.value);
+            window.addEventListener('resize', setupCanvas);
+
+            // --- INITIALIZATION ---
+            patternToolBtn.addEventListener('click', () => setTool('pattern'));
+            brushToolBtn.addEventListener('click', () => setTool('brush'));
+            brushSizeInput.addEventListener('input', (e) => {
+                brushSize = parseInt(e.target.value);
+                brushSizeValue.textContent = brushSize;
+            });
+            setTool('pattern'); // Initialize
+            populateFilters();
+            populatePalette();
+            setupCanvas();
+        });
+    </script>
+</body>
+</html>
